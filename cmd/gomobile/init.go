@@ -520,7 +520,11 @@ func fetch(url string) (dst string, err error) {
 			printcmd("stat %s", dst)
 		}
 		if _, err = os.Stat(dst); err == nil {
-			return dst, nil
+			if err := checkFetchHash(name, dst); err != nil {
+				fmt.Fprintf(os.Stderr, "A correct message disgest could not be calculated for existing download of '%v'.\n%v\n", dst, err)
+			} else {
+				return dst, nil
+			}
 		}
 	}
 	if buildX {
@@ -572,6 +576,30 @@ func fetch(url string) (dst string, err error) {
 		return "", err
 	}
 	return dst, nil
+}
+
+func checkFetchHash(name string, filepath string) error {
+	f, err := os.Open(filepath)
+	if err != nil {
+		return err
+	}
+	h, err := calcHash(f)
+	switch {
+	case err != nil:
+		return fmt.Errorf("could not calculate sha256 for %v: %v", name, err)
+	case fetchHashes[name] != h:
+		return fmt.Errorf("sha256 for %q: %v, want %v", name, h, fetchHashes[name])
+	default:
+		return nil
+	}
+}
+
+func calcHash(r io.Reader) (string, error) {
+	w := sha256.New()
+	if _, err := io.Copy(w, r); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(w.Sum(nil)), nil
 }
 
 func doCopyAll(dst, src string) error {
